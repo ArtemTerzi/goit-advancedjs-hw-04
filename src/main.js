@@ -27,100 +27,80 @@ const toastConfig = {
   position: 'topRight',
 };
 
-const toggleLoader = () => refs.loaderEl.classList.toggle('is-active');
-
 const searchParams = {
   page: 1,
   q: '',
   per_page: 15,
 };
 
-const onSearchFormSubmit = async e => {
-  e.preventDefault();
-  refs.galleryEl.innerHTML = '';
+const toggleLoader = () => refs.loaderEl.classList.toggle('is-active');
+const hideLoadMoreBtn = () => refs.loadMoreBtnEl.classList.add('is-hidden');
+const showLoadMoreBtn = () => refs.loadMoreBtnEl.classList.remove('is-hidden');
+
+const getAndRenderPhotos = async (isLoadMore = false) => {
   toggleLoader();
 
+  try {
+    const { data } = await getPhotosByQuery(searchParams);
+
+    const totalPages = Math.ceil(data.totalHits / searchParams.per_page);
+
+    if (!data.hits.length) {
+      throw new Error(toastConfig.message);
+    }
+
+    const markup = createGalleryMarkup(data.hits);
+    if (isLoadMore) {
+      refs.galleryEl.insertAdjacentHTML('beforeend', markup);
+    } else {
+      refs.galleryEl.innerHTML = markup;
+    }
+
+    gallery.refresh();
+
+    if (searchParams.page >= totalPages) {
+      hideLoadMoreBtn();
+      iziToast.info({
+        message: "We're sorry, but you've reached the end of search results.",
+      });
+    } else {
+      showLoadMoreBtn();
+    }
+
+    searchParams.page++;
+
+    if (isLoadMore) {
+      const scrollHeight =
+        document.querySelector('.gallery-item').getBoundingClientRect().width *
+        2;
+      scrollBy({ top: scrollHeight, behavior: 'smooth' });
+    }
+  } catch (err) {
+    iziToast.error(toastConfig);
+    hideLoadMoreBtn();
+    console.error(err);
+  } finally {
+    toggleLoader();
+  }
+};
+
+const onSearchFormSubmit = e => {
+  e.preventDefault();
   searchParams.page = 1;
   searchParams.q = refs.inputEl.value.trim();
   refs.inputEl.value = '';
+  refs.galleryEl.innerHTML = '';
+  hideLoadMoreBtn();
 
-  if (searchParams.q.length === 0) {
+  if (!searchParams.q) {
     iziToast.error(toastConfig);
-    toggleLoader();
     return;
   }
 
-  try {
-    const { data } = await getPhotosByQuery(searchParams);
-
-    if (data.hits.length === 0) throw new Error(toastConfig.message);
-
-    const totalPages = Math.ceil(data.totalHits / searchParams.per_page);
-
-    if (searchParams.page === totalPages) {
-      refs.loadMoreBtnEl.classList.add('is-hidden');
-      iziToast.info({
-        message: "We're sorry, but you've reached the end of search results.",
-      });
-    } else {
-      refs.loadMoreBtnEl.classList.remove('is-hidden');
-    }
-
-    searchParams.page++;
-    refs.galleryEl.innerHTML = createGalleryMarkup(data.hits);
-    gallery.refresh();
-  } catch (err) {
-    iziToast.error(toastConfig);
-    refs.loadMoreBtnEl.classList.add('is-hidden');
-    console.dir(err);
-  } finally {
-    toggleLoader();
-  }
+  getAndRenderPhotos(false);
 };
 
-const onLoadMoreButtonClick = async () => {
-  toggleLoader();
-  try {
-    const { data } = await getPhotosByQuery(searchParams);
-
-    const totalPages = Math.ceil(data.totalHits / searchParams.per_page);
-
-    if (searchParams.page === totalPages) {
-      refs.loadMoreBtnEl.classList.add('is-hidden');
-      iziToast.info({
-        message: "We're sorry, but you've reached the end of search results.",
-      });
-    } else {
-      refs.loadMoreBtnEl.classList.remove('is-hidden');
-    }
-
-    if (data.hits.length === 0) {
-      refs.loadMoreBtnEl.classList.add('is-hidden');
-      refs.loadMoreBtnEl.removeEventListener('click', onLoadMoreButtonClick);
-
-      return;
-    }
-
-    searchParams.page++;
-    const markup = createGalleryMarkup(data.hits);
-    refs.galleryEl.insertAdjacentHTML('beforeend', markup);
-    gallery.refresh();
-
-    const scrollHeight =
-      document.querySelector('.gallery-item').getBoundingClientRect().width * 2;
-
-    scrollBy({
-      top: scrollHeight,
-      behavior: 'smooth',
-    });
-  } catch (err) {
-    iziToast.error(toastConfig);
-    refs.loadMoreBtnEl.classList.add('is-hidden');
-    console.dir(err);
-  } finally {
-    toggleLoader();
-  }
-};
+const onLoadMoreButtonClick = () => getAndRenderPhotos(true);
 
 refs.formEl.addEventListener('submit', onSearchFormSubmit);
 refs.loadMoreBtnEl.addEventListener('click', onLoadMoreButtonClick);
